@@ -1,0 +1,9 @@
+# Entornos virtuales
+venv/
+__pycache__/
+
+# Modelos (se descargan desde Drive)
+models/*.h5
+
+# Archivos del sistema
+.env
