@@ -67,7 +67,7 @@ def process_image_no_background(image_array, model):
     img_resized = cv2.resize(image_array, (IMG_SIZE, IMG_SIZE)) / 255.0
     img_input = np.expand_dims(img_resized, axis=0)
 
-    pred = model.predict(img_input)[0]
+    pred = model.predict(img_input, verbose=0)[0]
     pred_mask = (pred > 0.5).astype(np.uint8)
     mask_resized = cv2.resize(pred_mask, (w, h), interpolation=cv2.INTER_NEAREST)
 
@@ -89,13 +89,16 @@ def process_image_no_background(image_array, model):
     rgba_image[mask_bool, :3] = image_array[mask_bool]
     rgba_image[mask_bool, 3] = 255
 
-    cropped = rgba_image[y:y+h_box, x:x+w_box]
+    cropped = rgba_image[y:y + h_box, x:x + w_box]
 
     size = max(h_box, w_box)
     canvas = np.zeros((size, size, 4), dtype=np.uint8)
     y_offset = (size - cropped.shape[0]) // 2
     x_offset = (size - cropped.shape[1]) // 2
-    canvas[y_offset:y_offset+cropped.shape[0], x_offset:x_offset+cropped.shape[1]] = cropped
+    canvas[
+        y_offset:y_offset + cropped.shape[0],
+        x_offset:x_offset + cropped.shape[1]
+    ] = cropped
 
     final_img = cv2.resize(canvas, (FINAL_SIZE, FINAL_SIZE), interpolation=cv2.INTER_AREA)
     return final_img, mask_resized
@@ -133,17 +136,18 @@ async def predict(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         img_array = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
+
         if img_array is None:
             return {"error": "Imagen inválida"}
 
-        segmented_img, mask = process_image_no_background(img_array, unet_model)
+        segmented_img, _ = process_image_no_background(img_array, unet_model)
         if segmented_img is None:
             return {"error": "No se detectó conjuntiva"}
 
         effnet_img = cv2.resize(segmented_img[:, :, :3], (EFFNET_SIZE, EFFNET_SIZE))
         effnet_img = np.expand_dims(preprocess_input(effnet_img), axis=0)
 
-        prediction = effnet_model.predict(effnet_img)[0]
+        prediction = effnet_model.predict(effnet_img, verbose=0)[0]
         anemia = "CON ANEMIA" if prediction[0] > 0.5 else "SIN ANEMIA"
 
         heatmap, class_idx = get_grad_cam(effnet_model, effnet_img[0])
@@ -159,8 +163,9 @@ async def predict(file: UploadFile = File(...)):
         return {"error": str(e)}
 
 # =============================
-# Run local (solo desarrollo)
+# Run (Render / Producción)
 # =============================
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
